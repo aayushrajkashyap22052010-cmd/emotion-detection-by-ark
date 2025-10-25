@@ -7,4 +7,5 @@ soundfile
 pydub
 matplotlib
 SpeechRecognition
-
+transformers
+torch
