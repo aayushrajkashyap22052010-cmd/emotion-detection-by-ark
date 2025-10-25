@@ -2,8 +2,11 @@ import streamlit as st
 import numpy as np
 import librosa
 import soundfile as sf
+import sounddevice as sd
 import speech_recognition as sr
 from transformers import pipeline
+import tempfile
+import scipy.io.wavfile as wav
 
 # -----------------------------
 # Helper Functions
@@ -24,10 +27,14 @@ def speech_to_text(audio_path):
         except:
             return ""
 
+@st.cache_resource
+def load_text_model():
+    return pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base")
+
 def analyze_text_emotion(text):
     if not text:
         return "neutral", 0.0
-    classifier = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base")
+    classifier = load_text_model()
     result = classifier(text)[0]
     return result['label'].lower(), result['score']
 
@@ -54,15 +61,17 @@ def combine_results(audio_feats, text_label, text_conf):
 # -----------------------------
 st.title("🎭 Emotion Detection from Audio + Text")
 
-option = st.radio("Choose input type:", ["Text", "Audio"])
+option = st.radio("Choose input type:", ["Text", "Audio Upload", "🎤 Live Audio"])
 
+# ---------- TEXT MODE ----------
 if option == "Text":
     text = st.text_input("Enter your text:")
     if st.button("Analyze Text"):
         emotion, conf = analyze_text_emotion(text)
         st.success(f"Detected Emotion: **{emotion}** (Confidence: {conf:.2f})")
 
-else:
+# ---------- UPLOAD MODE ----------
+elif option == "Audio Upload":
     st.info("Upload a short WAV audio file (5–10 s)")
     audio_file = st.file_uploader("Choose audio...", type=["wav"])
 
@@ -73,6 +82,35 @@ else:
 
         audio_feats = extract_audio_features(audio, sr)
         text = speech_to_text("temp.wav")
+        st.write("🗣️ Detected Speech:", text)
+
+        text_label, text_conf = analyze_text_emotion(text)
+        audio_emotion, final_emotion = combine_results(audio_feats, text_label, text_conf)
+
+        st.write(f"🎧 Audio Emotion: **{audio_emotion}**")
+        st.success(f"💡 Final Detected Emotion: **{final_emotion}**")
+
+# ---------- LIVE AUDIO MODE ----------
+else:
+    st.info("Click below to record live audio 🎙️")
+    duration = st.slider("Recording Duration (seconds)", 2, 10, 5)
+    sample_rate = 22050
+
+    if st.button("🎙️ Record"):
+        st.warning("Recording... Speak now!")
+        recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float32')
+        sd.wait()
+        st.success("Recording complete!")
+
+        # Save to a temporary file
+        tmpfile = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        wav.write(tmpfile.name, sample_rate, (recording * 32767).astype(np.int16))
+        st.audio(tmpfile.name, format="audio/wav")
+
+        # Analyze recorded audio
+        audio, sr = librosa.load(tmpfile.name, sr=22050)
+        audio_feats = extract_audio_features(audio, sr)
+        text = speech_to_text(tmpfile.name)
         st.write("🗣️ Detected Speech:", text)
 
         text_label, text_conf = analyze_text_emotion(text)

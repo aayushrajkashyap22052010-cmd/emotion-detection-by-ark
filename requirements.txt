@@ -9,3 +9,5 @@ matplotlib
 SpeechRecognition
 transformers
 torch
+sounddevice
+scipy
