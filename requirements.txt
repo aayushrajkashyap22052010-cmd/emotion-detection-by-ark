@@ -11,3 +11,4 @@ transformers
 torch
 sounddevice
 scipy
+streamlit-audiorec

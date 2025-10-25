@@ -2,9 +2,8 @@ import streamlit as st
 import numpy as np
 import librosa
 import soundfile as sf
-import sounddevice as sd
-import speech_recognition as sr
 from transformers import pipeline
+from st_audiorec import st_audiorec
 import tempfile
 import scipy.io.wavfile as wav
 
@@ -16,16 +15,6 @@ def extract_audio_features(audio, sr):
     pitch = np.mean(librosa.yin(audio, fmin=50, fmax=300))
     centroid = np.mean(librosa.feature.spectral_centroid(y=audio, sr=sr))
     return np.array([pitch, energy, centroid])
-
-def speech_to_text(audio_path):
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(audio_path) as source:
-        audio_data = recognizer.record(source)
-        try:
-            text = recognizer.recognize_google(audio_data)
-            return text
-        except:
-            return ""
 
 @st.cache_resource
 def load_text_model():
