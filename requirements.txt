@@ -6,3 +6,5 @@ scikit-learn
 soundfile
 pydub
 matplotlib
+SpeechRecognition
+
