@@ -1,9 +1,10 @@
 streamlit
-numpy
 librosa
 soundfile
 scipy
+numpy
 transformers
 torch
+sentencepiece
+protobuf
 streamlit-webrtc
-ffmpeg-python
