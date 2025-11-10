@@ -1,5 +1,4 @@
 streamlit
-st-audiorec
 librosa
 soundfile
 scipy
@@ -8,3 +7,4 @@ transformers
 torch
 sentencepiece
 protobuf
+streamlit-webrtc
