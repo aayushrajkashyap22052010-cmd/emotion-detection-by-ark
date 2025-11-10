@@ -20,8 +20,22 @@ def extract_audio_features(audio, sr):
 def load_text_model():
     return pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base")
 
+@st.cache_resource
+def load_speech_to_text_model():
+    return pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
+
+def speech_to_text(audio_path):
+    """Convert speech to text using Whisper ASR."""
+    asr = load_speech_to_text_model()
+    try:
+        result = asr(audio_path)
+        return result["text"].strip()
+    except Exception as e:
+        st.error(f"Speech recognition failed: {e}")
+        return ""
+
 def analyze_text_emotion(text):
-    if not text:
+    if not text.strip():
         return "neutral", 0.0
     classifier = load_text_model()
     result = classifier(text)[0]
@@ -48,6 +62,7 @@ def combine_results(audio_feats, text_label, text_conf):
 # -----------------------------
 # Streamlit App
 # -----------------------------
+st.set_page_config(page_title="🎭 Emotion Detector", layout="centered")
 st.title("🎭 Emotion Detection from Audio + Text")
 
 option = st.radio("Choose input type:", ["Text", "Audio Upload", "🎤 Live Audio"])
@@ -61,7 +76,7 @@ if option == "Text":
 
 # ---------- UPLOAD MODE ----------
 elif option == "Audio Upload":
-    st.info("Upload a short WAV audio file (5–10 s)")
+    st.info("Upload a short WAV audio file (5–10 seconds)")
     audio_file = st.file_uploader("Choose audio...", type=["wav"])
 
     if audio_file is not None:
@@ -71,7 +86,7 @@ elif option == "Audio Upload":
 
         audio_feats = extract_audio_features(audio, sr)
         text = speech_to_text("temp.wav")
-        st.write("🗣️ Detected Speech:", text)
+        st.write("🗣️ Detected Speech:", text or "(No speech detected)")
 
         text_label, text_conf = analyze_text_emotion(text)
         audio_emotion, final_emotion = combine_results(audio_feats, text_label, text_conf)
@@ -81,26 +96,20 @@ elif option == "Audio Upload":
 
 # ---------- LIVE AUDIO MODE ----------
 else:
-    st.info("Click below to record live audio 🎙️")
-    duration = st.slider("Recording Duration (seconds)", 2, 10, 5)
-    sample_rate = 22050
+    st.info("Click below to record your voice 🎙️")
 
-    if st.button("🎙️ Record"):
-        st.warning("Recording... Speak now!")
-        recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float32')
-        sd.wait()
-        st.success("Recording complete!")
-
-        # Save to a temporary file
+    wav_audio_data = st_audiorec()
+    if wav_audio_data is not None:
+        # Save to a temporary WAV file
         tmpfile = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        wav.write(tmpfile.name, sample_rate, (recording * 32767).astype(np.int16))
+        wav.write(tmpfile.name, 44100, wav_audio_data)
         st.audio(tmpfile.name, format="audio/wav")
 
-        # Analyze recorded audio
+        # Analyze the recorded audio
         audio, sr = librosa.load(tmpfile.name, sr=22050)
         audio_feats = extract_audio_features(audio, sr)
         text = speech_to_text(tmpfile.name)
-        st.write("🗣️ Detected Speech:", text)
+        st.write("🗣️ Detected Speech:", text or "(No speech detected)")
 
         text_label, text_conf = analyze_text_emotion(text)
         audio_emotion, final_emotion = combine_results(audio_feats, text_label, text_conf)
