@@ -3,9 +3,9 @@ import numpy as np
 import librosa
 import soundfile as sf
 from transformers import pipeline
-from st_audiorec import st_audiorec
 import tempfile
-import scipy.io.wavfile as wav
+from scipy.io import wavfile
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
 
 # -----------------------------
 # Helper Functions
@@ -74,7 +74,7 @@ if option == "Text":
         emotion, conf = analyze_text_emotion(text)
         st.success(f"Detected Emotion: **{emotion}** (Confidence: {conf:.2f})")
 
-# ---------- UPLOAD MODE ----------
+# ---------- AUDIO UPLOAD ----------
 elif option == "Audio Upload":
     st.info("Upload a short WAV audio file (5–10 seconds)")
     audio_file = st.file_uploader("Choose audio...", type=["wav"])
@@ -94,25 +94,43 @@ elif option == "Audio Upload":
         st.write(f"🎧 Audio Emotion: **{audio_emotion}**")
         st.success(f"💡 Final Detected Emotion: **{final_emotion}**")
 
-# ---------- LIVE AUDIO MODE ----------
+# ---------- LIVE AUDIO ----------
 else:
     st.info("Click below to record your voice 🎙️")
 
-    wav_audio_data = st_audiorec()
-    if wav_audio_data is not None:
-        # Save to a temporary WAV file
-        tmpfile = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        wav.write(tmpfile.name, 44100, wav_audio_data)
-        st.audio(tmpfile.name, format="audio/wav")
+    # WebRTC Audio Processor
+    class AudioProcessor(AudioProcessorBase):
+        def __init__(self):
+            self.audio_frames = []
 
-        # Analyze the recorded audio
-        audio, sr = librosa.load(tmpfile.name, sr=22050)
-        audio_feats = extract_audio_features(audio, sr)
-        text = speech_to_text(tmpfile.name)
-        st.write("🗣️ Detected Speech:", text or "(No speech detected)")
+        def recv(self, frame):
+            audio = frame.to_ndarray()
+            self.audio_frames.append(audio)
+            return frame
 
-        text_label, text_conf = analyze_text_emotion(text)
-        audio_emotion, final_emotion = combine_results(audio_feats, text_label, text_conf)
+    webrtc_ctx = webrtc_streamer(
+        key="live-audio",
+        mode=WebRtcMode.SENDONLY,
+        audio_processor_factory=AudioProcessor,
+        media_stream_constraints={"audio": True, "video": False},
+        async_processing=True,
+    )
 
-        st.write(f"🎧 Audio Emotion: **{audio_emotion}**")
-        st.success(f"💡 Final Detected Emotion: **{final_emotion}**")
+    if webrtc_ctx.audio_processor:
+        if st.button("Analyze Recorded Audio"):
+            # Combine audio frames
+            audio_frames = np.concatenate(webrtc_ctx.audio_processor.audio_frames, axis=0)
+            # Save to temp WAV
+            tmpfile = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+            wavfile.write(tmpfile.name, 44100, audio_frames.astype(np.int16))
+            st.audio(tmpfile.name, format="audio/wav")
+
+            audio_feats = extract_audio_features(audio_frames.astype(np.float32)/32768, 44100)
+            text = speech_to_text(tmpfile.name)
+            st.write("🗣️ Detected Speech:", text or "(No speech detected)")
+
+            text_label, text_conf = analyze_text_emotion(text)
+            audio_emotion, final_emotion = combine_results(audio_feats, text_label, text_conf)
+
+            st.write(f"🎧 Audio Emotion: **{audio_emotion}**")
+            st.success(f"💡 Final Detected Emotion: **{final_emotion}**")
